@@ -134,6 +134,7 @@ Notes:
 - `.streamlit/config.toml` is included for a hosted-friendly Streamlit setup.
 - Spark is intentionally off for Streamlit Cloud because the hosted environment is better suited to the lighter runtime path.
 - The app will still support custom typed cities through the Open-Meteo geocoding API.
+- If Streamlit Cloud deploys your app with Python 3.14 and you see a `protobuf` or `chromadb` import error, redeploy the app and choose Python 3.11 in Advanced settings. Streamlit Community Cloud documents that Python version is selected at deploy time from Advanced settings, and changing it later requires deleting and redeploying the app.
 
 ### Generic container platforms
 
