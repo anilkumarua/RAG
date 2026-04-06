@@ -1,0 +1,1 @@
+"""Eco-Pulse application package."""

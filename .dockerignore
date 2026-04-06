@@ -1,0 +1,13 @@
+.git
+.gitignore
+.venv
+__pycache__
+ecopulse/__pycache__
+data
+*.pyc
+*.pyo
+*.pyd
+.env
+.pytest_cache
+.mypy_cache
+*.parquet

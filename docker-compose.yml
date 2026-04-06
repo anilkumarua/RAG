@@ -1,0 +1,15 @@
+version: "3.9"
+
+services:
+  eco-pulse:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: eco-pulse
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    volumes:
+      - ./:/app
+    restart: unless-stopped
