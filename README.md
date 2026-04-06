@@ -31,6 +31,18 @@ streamlit run app.py
 If you set `OPENAI_API_KEY`, Eco-Pulse will use an OpenAI chat model through LangChain. Without a key, the app still runs using a deterministic retrieval pipeline and a rule-based narrative generator for demo purposes.
 Set `ENABLE_SPARK=true` when you want to activate the heavier Spark/Delta write path locally.
 
+For local development with tests:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+For local Spark and Delta support:
+
+```bash
+pip install -r requirements-spark.txt
+```
+
 ## Key features
 
 - AQI-aware commuting and outdoor-activity guidance
@@ -52,7 +64,11 @@ Set `ENABLE_SPARK=true` when you want to activate the heavier Spark/Delta write 
 |-- Procfile
 |-- runtime.txt
 |-- requirements.txt
+|-- requirements-dev.txt
+|-- requirements-spark.txt
 |-- .env.example
+|-- .streamlit/
+|   `-- config.toml
 |-- knowledge_corpus/
 |   |-- health_advisory.md
 |   |-- urban_mobility.md
@@ -101,11 +117,27 @@ This creates or appends bronze/silver records under `data/` and prints a compact
 
 1. Push this repository to GitHub.
 2. In Streamlit Community Cloud, create a new app pointing to `app.py`.
-3. Add `OPENAI_API_KEY` as a secret if you want LLM-backed responses.
+3. Keep the default install command so Streamlit Cloud uses the lightweight `requirements.txt`.
+4. Add secrets in the app settings if you want LLM-backed responses.
+
+Recommended Streamlit secrets:
+
+```toml
+OPENAI_API_KEY="your_key_here"
+OPENAI_MODEL="gpt-4o-mini"
+DEFAULT_CITY="Delhi"
+ENABLE_SPARK="false"
+```
+
+Notes:
+
+- `.streamlit/config.toml` is included for a hosted-friendly Streamlit setup.
+- Spark is intentionally off for Streamlit Cloud because the hosted environment is better suited to the lighter runtime path.
+- The app will still support custom typed cities through the Open-Meteo geocoding API.
 
 ### Generic container platforms
 
-Use the included `Dockerfile` and expose port `8501`. Suitable targets include Render, Railway, Azure Container Apps, and Google Cloud Run.
+Use the included `Dockerfile` and expose port `8501`. Suitable targets include Render, Railway, Azure Container Apps, and Google Cloud Run. The Docker image installs both the lightweight runtime dependencies and the optional Spark dependencies.
 
 ### Procfile-based hosts
 
