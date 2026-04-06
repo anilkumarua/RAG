@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from langchain_core.documents import Document
+from unittest.mock import patch
 
 from ecopulse.config import AppConfig
 from ecopulse.rag import EcoPulseRAG
@@ -73,3 +74,23 @@ def test_snapshot_text_formats_key_fields() -> None:
     assert "AQI category: Good" in text
     assert "PM2.5: 9.2 ug/m3" in text
     assert "exposure score: 8.8" in text
+
+
+def test_answer_question_falls_back_when_llm_errors() -> None:
+    rag = EcoPulseRAG(build_config(), StubKnowledgeBase())
+    rag.llm = object()
+    snapshot = {
+        "aqi_category": "Moderate",
+        "pm2_5": 26.0,
+        "temperature_2m": 30.0,
+        "relative_humidity_2m": 68.0,
+        "wind_speed_10m": 8.0,
+        "uv_index": 7.5,
+        "exposure_score": 22.4,
+    }
+
+    with patch.object(EcoPulseRAG, "_generate_answer", return_value=("fallback answer", True)):
+        response = rag.answer_question("Delhi", snapshot, "Is this a good time for a walk?")
+
+    assert response["answer"] == "fallback answer"
+    assert response["used_fallback"] is True

@@ -16,6 +16,13 @@ except Exception:
     ChatOpenAI = None
     OPENAI_AVAILABLE = False
 
+try:
+    from openai import APIError, APIStatusError, APITimeoutError, RateLimitError
+
+    OPENAI_ERRORS = (RateLimitError, APIError, APIStatusError, APITimeoutError)
+except Exception:
+    OPENAI_ERRORS = (Exception,)
+
 
 class EcoPulseRAG:
     def __init__(self, config: AppConfig, knowledge_base: KnowledgeBase) -> None:
@@ -49,25 +56,11 @@ class EcoPulseRAG:
     def answer_question(self, city: str, snapshot: dict, question: str) -> dict:
         search_text = self._build_search_text(city, snapshot, question)
         documents = self.knowledge_base.retrieve(search_text)
-        context = "\n\n".join(
-            f"Source: {doc.metadata.get('source', 'unknown')}\n{doc.page_content}" for doc in documents
-        )
-
-        if self.llm is not None:
-            chain = self.prompt | self.llm | StrOutputParser()
-            answer = chain.invoke(
-                {
-                    "city": city,
-                    "question": question,
-                    "snapshot": self._snapshot_text(snapshot),
-                    "context": context,
-                }
-            )
-        else:
-            answer = self._fallback_answer(city, snapshot, question, documents)
+        answer, used_fallback = self._generate_answer(city, snapshot, question, documents)
 
         return {
             "answer": answer,
+            "used_fallback": used_fallback,
             "evidence": [
                 {"source": doc.metadata.get("source", "unknown"), "content": doc.page_content}
                 for doc in documents
@@ -82,6 +75,27 @@ class EcoPulseRAG:
             api_key=self.config.openai_api_key,
             temperature=0.2,
         )
+
+    def _generate_answer(self, city: str, snapshot: dict, question: str, documents: list) -> tuple[str, bool]:
+        if self.llm is None:
+            return self._fallback_answer(city, snapshot, question, documents), True
+
+        context = "\n\n".join(
+            f"Source: {doc.metadata.get('source', 'unknown')}\n{doc.page_content}" for doc in documents
+        )
+        chain = self.prompt | self.llm | StrOutputParser()
+        try:
+            answer = chain.invoke(
+                {
+                    "city": city,
+                    "question": question,
+                    "snapshot": self._snapshot_text(snapshot),
+                    "context": context,
+                }
+            )
+            return answer, False
+        except OPENAI_ERRORS:
+            return self._fallback_answer(city, snapshot, question, documents), True
 
     @staticmethod
     def _build_search_text(city: str, snapshot: dict, question: str) -> str:
