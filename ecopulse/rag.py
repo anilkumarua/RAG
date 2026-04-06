@@ -42,6 +42,9 @@ class EcoPulseRAG:
                 Live snapshot:
                 {snapshot}
 
+                Forecast summary:
+                {forecast_summary}
+
                 Retrieved context:
                 {context}
 
@@ -90,6 +93,7 @@ class EcoPulseRAG:
                     "city": city,
                     "question": question,
                     "snapshot": self._snapshot_text(snapshot),
+                    "forecast_summary": self._forecast_text(snapshot),
                     "context": context,
                 }
             )
@@ -99,10 +103,13 @@ class EcoPulseRAG:
 
     @staticmethod
     def _build_search_text(city: str, snapshot: dict, question: str) -> str:
+        forecast_summary = snapshot.get("forecast_summary", {})
         return (
             f"{city} environmental guidance {question} "
             f"PM2.5 {snapshot['pm2_5']} UV {snapshot['uv_index']} "
-            f"humidity {snapshot['relative_humidity_2m']} wind {snapshot['wind_speed_10m']}"
+            f"humidity {snapshot['relative_humidity_2m']} wind {snapshot['wind_speed_10m']} "
+            f"best time {forecast_summary.get('best_time', 'unknown')} "
+            f"best forecast PM2.5 {forecast_summary.get('best_pm2_5', 'unknown')}"
         )
 
     @staticmethod
@@ -112,6 +119,19 @@ class EcoPulseRAG:
             f"temperature: {snapshot['temperature_2m']:.1f} C; humidity: {snapshot['relative_humidity_2m']:.0f}%; "
             f"wind: {snapshot['wind_speed_10m']:.1f} km/h; UV index: {snapshot['uv_index']:.1f}; "
             f"exposure score: {snapshot.get('exposure_score', 0):.1f}."
+        )
+
+    @staticmethod
+    def _forecast_text(snapshot: dict) -> str:
+        summary = snapshot.get("forecast_summary") or {}
+        if not summary:
+            return "No forecast summary available."
+        return (
+            f"Best upcoming hour: {summary.get('best_time')}; "
+            f"forecast exposure score: {summary.get('best_exposure_score')}; "
+            f"forecast PM2.5: {summary.get('best_pm2_5')} ug/m3; "
+            f"forecast UV: {summary.get('best_uv_index')}; "
+            f"forecast AQI category: {summary.get('best_aqi_category')}."
         )
 
     def _fallback_answer(self, city: str, snapshot: dict, question: str, documents: list) -> str:
@@ -140,10 +160,18 @@ class EcoPulseRAG:
 
         sources = ", ".join(doc.metadata.get("source", "unknown") for doc in documents[:3]) or "the indexed guidance"
         modifier_text = "; ".join(modifiers) if modifiers else "current weather is otherwise manageable"
+        forecast_summary = snapshot.get("forecast_summary") or {}
+        if forecast_summary:
+            forecast_timing = (
+                f"The best upcoming window appears around {forecast_summary['best_time']}, with forecast PM2.5 near "
+                f"{forecast_summary['best_pm2_5']} ug/m3 and UV near {forecast_summary['best_uv_index']}."
+            )
+        else:
+            forecast_timing = "No hourly forecast window was available, so this answer is based on current conditions."
 
         return (
             f"For {city}, the current air-quality category is {snapshot['aqi_category']}. {timing} {action} "
             f"This recommendation is driven mainly by PM2.5 at {pm:.1f} ug/m3, UV at {uv:.1f}, humidity at "
             f"{humidity:.0f}%, and wind speed at {wind:.1f} km/h. Additional context: {modifier_text}. "
-            f"Relevant guidance was retrieved from {sources}. Question considered: {question}"
+            f"{forecast_timing} Relevant guidance was retrieved from {sources}. Question considered: {question}"
         )

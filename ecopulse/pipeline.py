@@ -42,15 +42,22 @@ class EcoPulsePipeline:
         resolved_city = self.client.resolve_city(city, self.config.cities)
         city_name = str(resolved_city["name"])
         city_key = self._city_storage_key(city_name)
+        latitude = float(resolved_city["latitude"])
+        longitude = float(resolved_city["longitude"])
         snapshot = self.client.fetch_snapshot(
             city_name,
-            float(resolved_city["latitude"]),
-            float(resolved_city["longitude"]),
+            latitude,
+            longitude,
         )
+        forecast = self.client.fetch_hourly_forecast(city_name, latitude, longitude)
         snapshot["aqi_category"] = self._aqi_category(snapshot["pm2_5"])
         snapshot["city_key"] = city_key
+        snapshot["forecast"] = self._prepare_forecast(forecast)
+        snapshot["forecast_summary"] = self._summarize_forecast(snapshot["forecast"])
 
         bronze_df = pd.DataFrame([snapshot])
+        bronze_df["forecast"] = bronze_df["forecast"].map(json.dumps)
+        bronze_df["forecast_summary"] = bronze_df["forecast_summary"].map(json.dumps)
         bronze_df["raw_payload"] = bronze_df["raw_payload"].map(json.dumps)
         append_parquet(bronze_df, self.config.bronze_dir, f"{city_key}_bronze.parquet")
 
@@ -63,6 +70,8 @@ class EcoPulsePipeline:
             self._write_with_spark(silver_record, self.config.silver_dir / f"{city_key}_delta")
 
         snapshot["raw_payload"] = json.loads(bronze_df.iloc[0]["raw_payload"])
+        snapshot["forecast"] = json.loads(bronze_df.iloc[0]["forecast"])
+        snapshot["forecast_summary"] = json.loads(bronze_df.iloc[0]["forecast_summary"])
         snapshot["exposure_score"] = float(silver_record.iloc[0]["exposure_score"])
         return snapshot
 
@@ -72,6 +81,10 @@ class EcoPulsePipeline:
             return pd.DataFrame()
         df = pd.read_parquet(target)
         df["raw_payload"] = df["raw_payload"].map(json.loads)
+        if "forecast" in df.columns:
+            df["forecast"] = df["forecast"].map(json.loads)
+        if "forecast_summary" in df.columns:
+            df["forecast_summary"] = df["forecast_summary"].map(json.loads)
         return df.sort_values("timestamp").tail(24)
 
     def ingest_all_cities(self) -> list[dict]:
@@ -119,3 +132,25 @@ class EcoPulsePipeline:
         wind_bonus = max(0.0, min(float(row["wind_speed_10m"]) / 20.0, 1.0)) * 10
         humidity_penalty = abs(float(row["relative_humidity_2m"]) - 50.0) / 50.0 * 10
         return round(pollution_weight + uv_weight + humidity_penalty - wind_bonus, 2)
+
+    def _prepare_forecast(self, forecast: list[dict]) -> list[dict]:
+        if not forecast:
+            return []
+        df = pd.DataFrame(forecast)
+        df["exposure_score"] = df.apply(self._exposure_score, axis=1)
+        df["aqi_category"] = df["pm2_5"].map(self._aqi_category)
+        return df.to_dict(orient="records")
+
+    @staticmethod
+    def _summarize_forecast(forecast: list[dict]) -> dict:
+        if not forecast:
+            return {}
+        ranked = sorted(forecast, key=lambda item: (float(item["exposure_score"]), float(item["pm2_5"])))
+        best = ranked[0]
+        return {
+            "best_time": best["timestamp"],
+            "best_exposure_score": round(float(best["exposure_score"]), 2),
+            "best_pm2_5": round(float(best["pm2_5"]), 1),
+            "best_uv_index": round(float(best["uv_index"]), 1),
+            "best_aqi_category": best["aqi_category"],
+        }

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from random import Random
 
 import requests
@@ -68,6 +68,14 @@ class OpenMeteoClient:
             "raw_payload": {"weather": weather, "air_quality": air_quality},
         }
 
+    def fetch_hourly_forecast(self, city: str, latitude: float, longitude: float, hours: int = 12) -> list[dict]:
+        try:
+            weather = self._fetch_hourly_weather(latitude, longitude)
+            air_quality = self._fetch_hourly_air_quality(latitude, longitude)
+            return self._merge_hourly_forecast(weather, air_quality, hours=hours)
+        except requests.RequestException:
+            return self._fallback_hourly_forecast(city, hours=hours)
+
     def _fetch_weather(self, latitude: float, longitude: float) -> dict[str, float]:
         params = {
             "latitude": latitude,
@@ -90,6 +98,50 @@ class OpenMeteoClient:
         response.raise_for_status()
         return response.json()["current"]
 
+    def _fetch_hourly_weather(self, latitude: float, longitude: float) -> dict:
+        params = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "hourly": "temperature_2m,relative_humidity_2m,wind_speed_10m,uv_index",
+            "forecast_days": 2,
+            "timezone": "auto",
+        }
+        response = requests.get(self.weather_url, params=params, timeout=20)
+        response.raise_for_status()
+        return response.json()["hourly"]
+
+    def _fetch_hourly_air_quality(self, latitude: float, longitude: float) -> dict:
+        params = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "hourly": "pm2_5,pm10,carbon_monoxide,nitrogen_dioxide",
+            "forecast_days": 2,
+            "timezone": "auto",
+        }
+        response = requests.get(self.air_quality_url, params=params, timeout=20)
+        response.raise_for_status()
+        return response.json()["hourly"]
+
+    @staticmethod
+    def _merge_hourly_forecast(weather: dict, air_quality: dict, hours: int) -> list[dict]:
+        rows: list[dict] = []
+        timestamps = weather.get("time", [])
+        for index, timestamp in enumerate(timestamps[:hours]):
+            rows.append(
+                {
+                    "timestamp": timestamp,
+                    "temperature_2m": weather["temperature_2m"][index],
+                    "relative_humidity_2m": weather["relative_humidity_2m"][index],
+                    "wind_speed_10m": weather["wind_speed_10m"][index],
+                    "uv_index": weather["uv_index"][index],
+                    "pm2_5": air_quality["pm2_5"][index],
+                    "pm10": air_quality["pm10"][index],
+                    "carbon_monoxide": air_quality["carbon_monoxide"][index],
+                    "nitrogen_dioxide": air_quality["nitrogen_dioxide"][index],
+                }
+            )
+        return rows
+
     @staticmethod
     def _fallback_snapshot(city: str) -> tuple[dict[str, float], dict[str, float]]:
         now = datetime.now(timezone.utc)
@@ -108,3 +160,30 @@ class OpenMeteoClient:
             "nitrogen_dioxide": round(8 + rng.uniform(0, 40), 1),
         }
         return weather, air_quality
+
+    @staticmethod
+    def _fallback_hourly_forecast(city: str, hours: int = 12) -> list[dict]:
+        now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+        seed = abs(hash(f"{city}-{now.strftime('%Y-%m-%d')}"))
+        rng = Random(seed)
+        rows: list[dict] = []
+        baseline_pm = 10 + rng.uniform(0, 40)
+        baseline_temp = 20 + rng.uniform(0, 10)
+
+        for index in range(hours):
+            hour = now + timedelta(hours=index)
+            daylight_factor = max(0.0, 1.0 - abs(12 - hour.hour) / 12)
+            rows.append(
+                {
+                    "timestamp": hour.isoformat(),
+                    "temperature_2m": round(baseline_temp + daylight_factor * 6 + rng.uniform(-1.5, 1.5), 1),
+                    "relative_humidity_2m": round(45 + rng.uniform(0, 35), 1),
+                    "wind_speed_10m": round(4 + rng.uniform(0, 14), 1),
+                    "uv_index": round(daylight_factor * (4 + rng.uniform(0, 5)), 1),
+                    "pm2_5": round(max(5.0, baseline_pm + rng.uniform(-12, 12)), 1),
+                    "pm10": round(18 + rng.uniform(0, 90), 1),
+                    "carbon_monoxide": round(180 + rng.uniform(0, 500), 1),
+                    "nitrogen_dioxide": round(8 + rng.uniform(0, 35), 1),
+                }
+            )
+        return rows

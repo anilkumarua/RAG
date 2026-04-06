@@ -35,6 +35,22 @@ class StubClient:
             },
         }
 
+    def fetch_hourly_forecast(self, city: str, latitude: float, longitude: float, hours: int = 12) -> list[dict]:
+        return [
+            {
+                "timestamp": f"2026-04-06T0{index}:00:00+00:00",
+                "temperature_2m": 24.0 + index,
+                "relative_humidity_2m": 55.0,
+                "wind_speed_10m": 10.0,
+                "uv_index": float(index),
+                "pm2_5": 15.0 + index,
+                "pm10": 30.0 + index,
+                "carbon_monoxide": 220.0,
+                "nitrogen_dioxide": 14.0,
+            }
+            for index in range(min(hours, 5))
+        ]
+
 
 def build_config(tmp_path: Path) -> AppConfig:
     return AppConfig(
@@ -65,6 +81,7 @@ def test_ingest_city_writes_bronze_and_silver_records() -> None:
         assert silver_path.exists()
         assert snapshot["aqi_category"] == "Moderate"
         assert "exposure_score" in snapshot
+        assert snapshot["forecast_summary"]["best_time"] == "2026-04-06T00:00:00+00:00"
 
         history = pipeline.load_city_history("Delhi")
         assert len(history) == 1
@@ -108,6 +125,7 @@ def test_ingest_city_supports_dynamic_city_names() -> None:
 
         assert snapshot["city"] == "Paris, Ile-de-France, France"
         assert snapshot["city_key"] == "paris_ile_de_france_france"
+        assert len(snapshot["forecast"]) == 5
         assert len(history) == 1
     finally:
         shutil.rmtree(root, ignore_errors=True)

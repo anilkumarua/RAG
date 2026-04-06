@@ -44,6 +44,13 @@ def test_answer_question_returns_fallback_answer_and_evidence() -> None:
         "wind_speed_10m": 8.0,
         "uv_index": 7.5,
         "exposure_score": 22.4,
+        "forecast_summary": {
+            "best_time": "2026-04-06T06:00:00+00:00",
+            "best_exposure_score": 10.5,
+            "best_pm2_5": 16.0,
+            "best_uv_index": 2.0,
+            "best_aqi_category": "Moderate",
+        },
     }
 
     response = rag.answer_question(
@@ -54,6 +61,7 @@ def test_answer_question_returns_fallback_answer_and_evidence() -> None:
 
     assert "Delhi" in response["answer"]
     assert "PM2.5" in response["answer"]
+    assert "best upcoming window" in response["answer"] or "best upcoming" in response["answer"].lower()
     assert len(response["evidence"]) == 2
     assert response["evidence"][0]["source"] == "health_advisory.md"
 
@@ -67,6 +75,13 @@ def test_snapshot_text_formats_key_fields() -> None:
         "wind_speed_10m": 10.2,
         "uv_index": 3.1,
         "exposure_score": 8.8,
+        "forecast_summary": {
+            "best_time": "2026-04-06T07:00:00+00:00",
+            "best_exposure_score": 7.2,
+            "best_pm2_5": 8.4,
+            "best_uv_index": 1.8,
+            "best_aqi_category": "Good",
+        },
     }
 
     text = EcoPulseRAG._snapshot_text(snapshot)
@@ -74,6 +89,10 @@ def test_snapshot_text_formats_key_fields() -> None:
     assert "AQI category: Good" in text
     assert "PM2.5: 9.2 ug/m3" in text
     assert "exposure score: 8.8" in text
+
+    forecast_text = EcoPulseRAG._forecast_text(snapshot)
+    assert "Best upcoming hour" in forecast_text
+    assert "8.4 ug/m3" in forecast_text
 
 
 def test_answer_question_falls_back_when_llm_errors() -> None:
@@ -87,6 +106,13 @@ def test_answer_question_falls_back_when_llm_errors() -> None:
         "wind_speed_10m": 8.0,
         "uv_index": 7.5,
         "exposure_score": 22.4,
+        "forecast_summary": {
+            "best_time": "2026-04-06T06:00:00+00:00",
+            "best_exposure_score": 10.5,
+            "best_pm2_5": 16.0,
+            "best_uv_index": 2.0,
+            "best_aqi_category": "Moderate",
+        },
     }
 
     with patch.object(EcoPulseRAG, "_generate_answer", return_value=("fallback answer", True)):
