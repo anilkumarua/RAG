@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 
 import pandas as pd
 
@@ -38,28 +39,35 @@ class EcoPulsePipeline:
         self.spark = None
 
     def ingest_city(self, city: str) -> dict:
-        coords = self.config.cities[city]
-        snapshot = self.client.fetch_snapshot(city, coords["latitude"], coords["longitude"])
+        resolved_city = self.client.resolve_city(city, self.config.cities)
+        city_name = str(resolved_city["name"])
+        city_key = self._city_storage_key(city_name)
+        snapshot = self.client.fetch_snapshot(
+            city_name,
+            float(resolved_city["latitude"]),
+            float(resolved_city["longitude"]),
+        )
         snapshot["aqi_category"] = self._aqi_category(snapshot["pm2_5"])
+        snapshot["city_key"] = city_key
 
         bronze_df = pd.DataFrame([snapshot])
         bronze_df["raw_payload"] = bronze_df["raw_payload"].map(json.dumps)
-        append_parquet(bronze_df, self.config.bronze_dir, f"{city.lower()}_bronze.parquet")
+        append_parquet(bronze_df, self.config.bronze_dir, f"{city_key}_bronze.parquet")
 
         silver_record = bronze_df.copy()
         silver_record["exposure_score"] = silver_record.apply(self._exposure_score, axis=1)
-        append_parquet(silver_record, self.config.silver_dir, f"{city.lower()}_silver.parquet")
+        append_parquet(silver_record, self.config.silver_dir, f"{city_key}_silver.parquet")
 
         if self.config.enable_spark:
-            self._write_with_spark(bronze_df, self.config.bronze_dir / f"{city.lower()}_delta")
-            self._write_with_spark(silver_record, self.config.silver_dir / f"{city.lower()}_delta")
+            self._write_with_spark(bronze_df, self.config.bronze_dir / f"{city_key}_delta")
+            self._write_with_spark(silver_record, self.config.silver_dir / f"{city_key}_delta")
 
         snapshot["raw_payload"] = json.loads(bronze_df.iloc[0]["raw_payload"])
         snapshot["exposure_score"] = float(silver_record.iloc[0]["exposure_score"])
         return snapshot
 
     def load_city_history(self, city: str) -> pd.DataFrame:
-        target = self.config.silver_dir / f"{city.lower()}_silver.parquet"
+        target = self.config.silver_dir / f"{self._city_storage_key(city)}_silver.parquet"
         if not target.exists():
             return pd.DataFrame()
         df = pd.read_parquet(target)
@@ -68,6 +76,11 @@ class EcoPulsePipeline:
 
     def ingest_all_cities(self) -> list[dict]:
         return [self.ingest_city(city) for city in self.config.cities]
+
+    @staticmethod
+    def _city_storage_key(city: str) -> str:
+        key = re.sub(r"[^a-z0-9]+", "_", city.strip().lower()).strip("_")
+        return key or "city"
 
     def _build_spark_session(self):
         if not DELTA_AVAILABLE or SparkSession is None:

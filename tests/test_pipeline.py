@@ -11,6 +11,12 @@ from ecopulse.pipeline import EcoPulsePipeline
 
 
 class StubClient:
+    def resolve_city(self, city: str, known_cities: dict[str, dict[str, float]] | None = None) -> dict:
+        if known_cities and city in known_cities:
+            coords = known_cities[city]
+            return {"name": city, "latitude": coords["latitude"], "longitude": coords["longitude"]}
+        return {"name": "Paris, Ile-de-France, France", "latitude": 48.8566, "longitude": 2.3522}
+
     def fetch_snapshot(self, city: str, latitude: float, longitude: float) -> dict:
         return {
             "city": city,
@@ -87,3 +93,21 @@ def test_exposure_score_increases_with_pollution_and_uv() -> None:
     )
 
     assert EcoPulsePipeline._exposure_score(harsher) > EcoPulsePipeline._exposure_score(cleaner)
+
+
+def test_ingest_city_supports_dynamic_city_names() -> None:
+    root = Path.cwd() / "test_artifacts" / f"dynamic_{uuid.uuid4().hex}"
+    root.mkdir(parents=True, exist_ok=True)
+    try:
+        config = build_config(root)
+        pipeline = EcoPulsePipeline(config)
+        pipeline.client = StubClient()
+
+        snapshot = pipeline.ingest_city("Paris")
+        history = pipeline.load_city_history(snapshot["city"])
+
+        assert snapshot["city"] == "Paris, Ile-de-France, France"
+        assert snapshot["city_key"] == "paris_ile_de_france_france"
+        assert len(history) == 1
+    finally:
+        shutil.rmtree(root, ignore_errors=True)

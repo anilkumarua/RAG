@@ -9,6 +9,42 @@ import requests
 class OpenMeteoClient:
     weather_url = "https://api.open-meteo.com/v1/forecast"
     air_quality_url = "https://air-quality-api.open-meteo.com/v1/air-quality"
+    geocoding_url = "https://geocoding-api.open-meteo.com/v1/search"
+
+    def resolve_city(self, city: str, known_cities: dict[str, dict[str, float]] | None = None) -> dict[str, float | str]:
+        normalized_city = city.strip()
+        if not normalized_city:
+            raise ValueError("Please enter a city name.")
+
+        if known_cities and normalized_city in known_cities:
+            coords = known_cities[normalized_city]
+            return {
+                "name": normalized_city,
+                "latitude": coords["latitude"],
+                "longitude": coords["longitude"],
+            }
+
+        params = {
+            "name": normalized_city,
+            "count": 1,
+            "language": "en",
+            "format": "json",
+        }
+        response = requests.get(self.geocoding_url, params=params, timeout=20)
+        response.raise_for_status()
+        payload = response.json()
+        results = payload.get("results") or []
+        if not results:
+            raise ValueError(f"Could not find coordinates for '{normalized_city}'.")
+
+        match = results[0]
+        parts = [match.get("name"), match.get("admin1"), match.get("country")]
+        display_name = ", ".join(part for part in parts if part)
+        return {
+            "name": display_name,
+            "latitude": float(match["latitude"]),
+            "longitude": float(match["longitude"]),
+        }
 
     def fetch_snapshot(self, city: str, latitude: float, longitude: float) -> dict:
         try:

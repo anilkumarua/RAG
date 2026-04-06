@@ -70,21 +70,33 @@ def main() -> None:
 
     with st.sidebar:
         st.header("Controls")
-        selected_city = st.selectbox("City", cities, index=default_index)
+        preset_city = st.selectbox("Quick pick", cities, index=default_index)
+        custom_city = st.text_input(
+            "Or type any city",
+            value=st.session_state.get("custom_city_input", ""),
+            placeholder="Hyderabad, Paris, Tokyo, Singapore...",
+        )
+        selected_city = custom_city.strip() or preset_city
         refresh = st.button("Refresh live data", use_container_width=True, type="primary")
+        st.caption(f"Current target: {selected_city}")
         st.markdown(
             "Eco-Pulse combines live telemetry with a document-backed knowledge layer to answer practical questions."
         )
 
-    if refresh or "snapshot" not in st.session_state or st.session_state.get("city") != selected_city:
-        snapshot = pipeline.ingest_city(selected_city)
-        history = pipeline.load_city_history(selected_city)
-        st.session_state["snapshot"] = snapshot
-        st.session_state["history"] = history
-        st.session_state["city"] = selected_city
-    else:
-        snapshot = st.session_state["snapshot"]
-        history = st.session_state["history"]
+    try:
+        if refresh or "snapshot" not in st.session_state or st.session_state.get("city") != selected_city:
+            snapshot = pipeline.ingest_city(selected_city)
+            history = pipeline.load_city_history(snapshot["city"])
+            st.session_state["snapshot"] = snapshot
+            st.session_state["history"] = history
+            st.session_state["city"] = selected_city
+            st.session_state["custom_city_input"] = custom_city.strip()
+        else:
+            snapshot = st.session_state["snapshot"]
+            history = st.session_state["history"]
+    except ValueError as exc:
+        st.error(str(exc))
+        return
 
     left, middle, right = st.columns(3)
     with left:
@@ -97,7 +109,7 @@ def main() -> None:
         metric_card("Wind Speed", f'{snapshot["wind_speed_10m"]:.1f} km/h', "Surface wind speed.")
         metric_card("UV Index", f'{snapshot["uv_index"]:.1f}', "Ultraviolet exposure risk.")
 
-    st.subheader(f"Live Snapshot for {selected_city}")
+    st.subheader(f'Live Snapshot for {snapshot["city"]}')
     snapshot_table = pd.DataFrame([snapshot]).drop(columns=["raw_payload"])
     st.dataframe(snapshot_table, use_container_width=True)
 
