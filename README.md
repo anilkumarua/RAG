@@ -29,6 +29,7 @@ streamlit run app.py
 ```
 
 If you set `OPENAI_API_KEY`, Eco-Pulse will use an OpenAI chat model through LangChain. Without a key, the app still runs using a deterministic retrieval pipeline and a rule-based narrative generator for demo purposes.
+Set `ENABLE_SPARK=true` when you want to activate the heavier Spark/Delta write path locally.
 
 ## Key features
 
@@ -72,6 +73,7 @@ If you set `OPENAI_API_KEY`, Eco-Pulse will use an OpenAI chat model through Lan
 
 - The ingestion layer uses Open-Meteo because it provides free weather and air-quality APIs suitable for prototypes and classroom demos.
 - Delta persistence is attempted when `delta-spark` is installed correctly; otherwise the pipeline falls back to Parquet while keeping the same bronze/silver layout.
+- Spark startup is disabled by default for fast local development and tests; enable it explicitly with `ENABLE_SPARK=true` when you want the Delta-backed path.
 - The knowledge corpus ships with seed documents, and you can drop additional Markdown or text files into `knowledge_corpus/` before relaunching the app.
 
 ## Docker

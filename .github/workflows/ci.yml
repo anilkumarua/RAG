@@ -44,6 +44,9 @@ jobs:
       - name: Compile Python sources
         run: python -m compileall app.py ecopulse scripts
 
+      - name: Run unit tests
+        run: python -m pytest tests -q -p no:cacheprovider
+
       - name: Smoke test ingestion pipeline
         run: python scripts/run_ingestion.py --city Delhi --bootstrap-kb
 

@@ -35,7 +35,7 @@ class EcoPulsePipeline:
         self.client = OpenMeteoClient()
         ensure_directory(config.bronze_dir)
         ensure_directory(config.silver_dir)
-        self.spark = self._build_spark_session()
+        self.spark = None
 
     def ingest_city(self, city: str) -> dict:
         coords = self.config.cities[city]
@@ -50,7 +50,7 @@ class EcoPulsePipeline:
         silver_record["exposure_score"] = silver_record.apply(self._exposure_score, axis=1)
         append_parquet(silver_record, self.config.silver_dir, f"{city.lower()}_silver.parquet")
 
-        if self.spark is not None:
+        if self.config.enable_spark:
             self._write_with_spark(bronze_df, self.config.bronze_dir / f"{city.lower()}_delta")
             self._write_with_spark(silver_record, self.config.silver_dir / f"{city.lower()}_delta")
 
@@ -84,6 +84,8 @@ class EcoPulsePipeline:
             return None
 
     def _write_with_spark(self, df: pd.DataFrame, path: Path) -> None:
+        if self.spark is None:
+            self.spark = self._build_spark_session()
         if self.spark is None:
             return
         spark_df = self.spark.createDataFrame(df)

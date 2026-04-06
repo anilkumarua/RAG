@@ -18,6 +18,7 @@ class AppConfig:
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
     streamlit_port: int = 8501
+    enable_spark: bool = False
     cities: dict[str, dict[str, float]] = field(default_factory=dict)
 
     @classmethod
@@ -41,5 +42,6 @@ class AppConfig:
             openai_api_key=os.getenv("OPENAI_API_KEY") or None,
             openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
             streamlit_port=int(os.getenv("PORT", "8501")),
+            enable_spark=os.getenv("ENABLE_SPARK", "false").lower() == "true",
             cities=cities,
         )
