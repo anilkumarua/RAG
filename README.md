@@ -1,1 +1,2 @@
-# RAG
+
+Eco-Pulse is a smart-city environmental intelligence system that combines real-time air quality and weather data with Retrieval-Augmented Generation to provide context-aware, evidence-based recommendations for healthier urban living. The platform uses live environmental monitoring, a knowledge base of advisories and regulations, and a Streamlit dashboard to help users make better decisions about outdoor activity, commuting, and pollution exposure.
